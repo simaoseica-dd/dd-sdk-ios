@@ -40,6 +40,10 @@ let package = Package(
             targets: ["DatadogRUM"]
         ),
         .library(
+            name: "DatadogMetrics",
+            targets: ["DatadogMetrics"]
+        ),
+        .library(
             name: "DatadogSessionReplay",
             targets: ["DatadogSessionReplay"]
         ),
@@ -204,6 +208,23 @@ let package = Package(
             resources: [
                 .process("Resources/Assets.xcassets")
             ]
+        ),
+
+        .target(
+            name: "DatadogMetrics",
+            dependencies: [
+                .target(name: "DatadogInternal"),
+                .product(name: "OpenTelemetryApi", package: "opentelemetry-swift"),
+            ],
+            path: "DatadogMetrics/Sources"
+        ),
+        .testTarget(
+            name: "DatadogMetricsTests",
+            dependencies: [
+                .target(name: "DatadogMetrics"),
+                .target(name: "TestUtilities"),
+            ],
+            path: "DatadogMetrics/Tests"
         ),
 
         .target(
