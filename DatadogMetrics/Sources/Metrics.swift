@@ -53,6 +53,8 @@ public enum Metrics {
 import MetricKit
 
 extension Metrics {
+
+    @available(iOS 13.0, *)
     static public func send(_ payloads: [MXMetricPayload], to core: DatadogCoreProtocol = CoreRegistry.default) {
         core.get(feature: MetricFeature.self)?.subscriber.didReceive(payloads)
     }

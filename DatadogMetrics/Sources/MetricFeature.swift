@@ -71,7 +71,7 @@ internal struct RequestBuilder: FeatureRequestBuilder {
         self.telemetry = telemetry
     }
 
-    func request(for events: [Event], with context: DatadogContext) throws -> URLRequest {
+    func request(for events: [Event], with context: DatadogInternal.DatadogContext, execution: ExecutionContext) throws -> URLRequest {
         let messages = try events.map(\.data).map { try decoder.decode(MetricMessage.self, from: $0) }
 
         var aggregators: [Submission.Metadata: Aggregator] = [:]

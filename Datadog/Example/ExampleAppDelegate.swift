@@ -11,6 +11,7 @@ import DatadogTrace
 import DatadogRUM
 import DatadogCrashReporting
 import OpenTelemetryApi
+import DatadogMetrics
 
 let serviceName = "ios-sdk-example-app"
 
@@ -44,6 +45,8 @@ class ExampleAppDelegate: UIResponder, UIApplicationDelegate {
             ),
             trackingConsent: .granted
         )
+
+        Metrics.enable(with: .init(apiKey: "apiKey"))
 
         // Set user information
         Datadog.setUserInfo(id: "abcd-1234", name: "foo", email: "foo@example.com", extraInfo: ["key-extraUserInfo": "value-extraUserInfo"])

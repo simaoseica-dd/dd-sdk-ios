@@ -9,7 +9,7 @@ import DatadogInternal
 
 #if !canImport(MetricKit)
 
-internal final class DatadogMetricSubscriber: NSObject {
+public final class DatadogMetricSubscriber: NSObject {
     required init(core: DatadogCoreProtocol) {
         super.init()
     }
@@ -19,10 +19,37 @@ internal final class DatadogMetricSubscriber: NSObject {
 
 import MetricKit
 
-internal final class DatadogMetricSubscriber: NSObject, MXMetricManagerSubscriber {
+public protocol SignpostController {
+
+    func startMXMetric(for screen: StaticString)
+    func stopMXMetric(for screen: StaticString)
+}
+
+extension OSLog {
+
+    public static var fetchItems = MXMetricManager.makeLogHandle(category: "Dashboard")
+    public static var screenDuration = MXMetricManager.makeLogHandle(category: "Screen")
+    public static var screenEvent = MXMetricManager.makeLogHandle(category: "Event")
+}
+
+
+extension SignpostController {
+
+    public func startMXMetric(for screen: StaticString) {
+
+        mxSignpost(.begin, log: .screenDuration, name: screen, #file, ["param simao"])
+    }
+ 
+    public func stopMXMetric(for screen: StaticString) {
+
+        mxSignpost(.end, log: .screenDuration, name: screen, #file, ["param simao end", "plus one"])
+    }
+}
+
+public final class DatadogMetricSubscriber: NSObject, MXMetricManagerSubscriber, SignpostController {
     weak var core: DatadogCoreProtocol?
 
-    required init(core: DatadogCoreProtocol) {
+    public required init(core: DatadogCoreProtocol) {
         self.core = core
         super.init()
         MXMetricManager.shared.add(self)
@@ -33,9 +60,23 @@ internal final class DatadogMetricSubscriber: NSObject, MXMetricManagerSubscribe
     }
 
     // Receive daily metrics.
-    func didReceive(_ payloads: [MXMetricPayload]) {
+    public func didReceive(_ payloads: [MXMetricPayload]) {
+
+        UserDefaults.standard.set(Date(), forKey: "lastMetricKitReport")
+        UserDefaults.standard.set(UserDefaults.standard.integer(forKey: "numOfReports") + 1, forKey: "numOfReports")
+
         for payload in payloads {
             let timestamp = Date() // payload.timeStampEnd
+
+            let data = payload.jsonRepresentation()
+
+            print("\(payload.timeStampBegin)\(payload.timeStampEnd)")
+            print("Payload: \(String(decoding: data, as: UTF8.self))\n")
+
+            if let signpostMetrics = payload.signpostMetrics {
+                record(name: "signpostMetrics", timestamp: timestamp, signpostMetrics)
+            }
+
             if let cpuMetrics = payload.cpuMetrics {
                 record(name: "cumulativeCPUTime", timestamp: timestamp, cpuMetrics.cumulativeCPUTime)
 
@@ -111,17 +152,87 @@ internal final class DatadogMetricSubscriber: NSObject, MXMetricManagerSubscribe
         }
     }
 
-    // Receive diagnostics immediately when available.
+    // Receive diagnostics immediately when available (iOS 15 and above).
     @available(iOS 14.0, *)
-    func didReceive(_ payloads: [MXDiagnosticPayload]) {
-       // Process diagnostics.
+    public func didReceive(_ payloads: [MXDiagnosticPayload]) {
+
+        UserDefaults.standard.set(Date(), forKey: "lastDiagnosticReport")
+        UserDefaults.standard.set(UserDefaults.standard.integer(forKey: "numOfDiagnostics") + 1, forKey: "numOfDiagnostics")
+
+        payloads.forEach { payload in
+            let data = payload.jsonRepresentation()
+
+            print("\(payload.timeStampBegin)\(payload.timeStampEnd)")
+            print("Payload: \(String(decoding: data, as: UTF8.self))\n")
+        }
+
+        print("--------------------------------------------------------")
     }
 }
 
 extension DatadogMetricSubscriber {
 
+    func record(name: String, timestamp: Date, _ signpostMetrics: [MXSignpostMetric]) {
+
+        signpostMetrics.forEach { signpostMetric in
+
+            guard signpostMetric.signpostCategory == "Screen" else {
+
+                print(signpostMetric.signpostCategory)
+                return
+            }
+
+            print("[signpostName]\(signpostMetric.signpostName): \(signpostMetric.totalCount)")
+
+            if let signpostIntervalData = signpostMetric.signpostIntervalData {
+
+                record(name: "histogrammedSignpostDuration", signpostName: signpostMetric.signpostName, timestamp: timestamp, signpostIntervalData.histogrammedSignpostDuration)
+
+                if let cumulativeCPUTime = signpostIntervalData.cumulativeCPUTime {
+                    record(name: "cumulativeCPUTime", signpostName: signpostMetric.signpostName, timestamp: timestamp, cumulativeCPUTime)
+                }
+
+                if let averageMemory = signpostIntervalData.averageMemory {
+                    record(name: "averageMemory", signpostName: signpostMetric.signpostName, timestamp: timestamp, averageMemory)
+                }
+
+                if #available(iOS 15.0, *),
+                   let cumulativeHitchTimeRatio = signpostIntervalData.cumulativeHitchTimeRatio {
+                        record(name: "cumulativeHitchTimeRatio", signpostName: signpostMetric.signpostName, timestamp: timestamp, cumulativeHitchTimeRatio)
+                }
+
+                if let cumulativeLogicalWrites = signpostIntervalData.cumulativeLogicalWrites {
+                    record(name: "cumulativeLogicalWrites", signpostName: signpostMetric.signpostName, timestamp: timestamp, cumulativeLogicalWrites)
+                }
+            }
+        }
+    }
+
+    func record<UnitType>(name: String, timestamp: Date, _ measure: MXAverage<UnitType>) {
+        record(name: name, signpostName: "overall", timestamp: timestamp, measure.averageMeasurement)
+    }
+
+    func record<UnitType>(name: String, signpostName: String?, timestamp: Date, _ measure: MXAverage<UnitType>) {
+        record(name: name, signpostName: signpostName, timestamp: timestamp, measure.averageMeasurement)
+    }
+
     func record<UnitType>(name: String, timestamp: Date, _ measure: Measurement<UnitType>) {
+        record(name: name, signpostName: "overall", timestamp: timestamp, measure)
+    }
+
+    func record<UnitType>(name: String, signpostName: String?, timestamp: Date, _ measure: Measurement<UnitType>) {
         core?.scope(for: MetricFeature.self).eventWriteContext { context, writer in
+
+            let tags = [
+                "service:\(context.service)",
+                "env:\(context.env)",
+                "version:\(context.version)",
+                "build_number:\(context.buildNumber)",
+                "source:\(context.source)",
+                "application_name:\(context.applicationName)",
+                "signpostName:\(signpostName)"
+            ]
+
             let serie = Serie(
                 type: .gauge,
                 interval: nil,
@@ -134,14 +245,7 @@ extension DatadogMetricSubscriber {
                     )
                 ],
                 resources: [],
-                tags: [
-                    "service:\(context.service)",
-                    "env:\(context.env)",
-                    "version:\(context.version)",
-                    "build_number:\(context.buildNumber)",
-                    "source:\(context.source)",
-                    "application_name:\(context.applicationName)",
-                ]
+                tags: tags
             )
 
             writer.write(value: MetricMessage.serie(serie))
@@ -149,6 +253,10 @@ extension DatadogMetricSubscriber {
     }
 
     func record<UnitType>(name: String, timestamp: Date, _ histogram: MXHistogram<UnitType>) {
+        record(name: name, signpostName: "overall", timestamp: timestamp, histogram)
+    }
+
+    func record<UnitType>(name: String, signpostName: String?, timestamp: Date, _ histogram: MXHistogram<UnitType>) {
         core?.scope(for: MetricFeature.self).eventWriteContext { context, writer in
             let metric = "\(context.source).\(context.applicationBundleIdentifier).\(name)"
             let tags = [
@@ -158,6 +266,7 @@ extension DatadogMetricSubscriber {
                 "build_number:\(context.buildNumber)",
                 "source:\(context.source)",
                 "application_name:\(context.applicationName)",
+                "signpostName:\(signpostName)"
             ]
 
             let measures: MXHistogramMeasures<UnitType>? = histogram
