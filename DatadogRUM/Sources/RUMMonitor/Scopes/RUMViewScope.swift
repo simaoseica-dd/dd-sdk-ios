@@ -116,9 +116,11 @@ internal class RUMViewScope: RUMScope, RUMContextProvider {
     /// Tracks "RUM View Ended" metric for this view.
     private let viewEndedMetric: ViewEndedController
     /// Tracks "View Hitches" for this view.
-    private let viewHitchesReader: (ViewHitchesModel & RenderLoopReader)?
+    let viewHitchesReader: (ViewHitchesModel & RenderLoopReader)?
     /// Tracks "View Hangs" for this view.
-    private var totalAppHangDuration: Double = 0.0
+    var totalAppHangDuration: Double = 0.0
+
+    var hangs: [(CGFloat, CGFloat)] = [] // Range for green highlight (e.g., 0.2...0.3)
 
     init(
         isInitialView: Bool,
@@ -741,6 +743,11 @@ internal class RUMViewScope: RUMScope, RUMContextProvider {
     private func sendErrorEvent(on command: RUMErrorCommand, context: DatadogContext, writer: Writer) {
         errorsCount += 1
         totalAppHangDuration += (command as? RUMAddCurrentViewAppHangCommand)?.hangDuration ?? 0
+
+        if let command = (command as? RUMAddCurrentViewAppHangCommand) {
+
+            self.hangs.append((command.time.timeIntervalSince(viewStartTime), command.hangDuration))
+        }
 
         var commandAttributes = command.globalAttributes.merging(command.attributes) { $1 }
         let errorFingerprint: String? = commandAttributes.removeValue(forKey: RUM.Attributes.errorFingerprint)?.dd.decode()
