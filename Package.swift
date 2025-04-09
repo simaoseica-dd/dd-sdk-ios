@@ -53,6 +53,10 @@ let package = Package(
             targets: ["DatadogRUM"]
         ),
         .library(
+            name: "RUMWidget",
+            targets: ["RUMWidget"]
+        ),
+        .library(
             name: "DatadogSessionReplay",
             targets: ["DatadogSessionReplay"]
         ),
@@ -151,6 +155,21 @@ let package = Package(
                 .target(name: "DatadogInternal"),
             ],
             path: "DatadogRUM",
+            sources: ["Sources"],
+            resources: [
+                .copy("Resources/PrivacyInfo.xcprivacy"),
+                .process("Resources/Assets.xcassets")
+            ]
+        ),
+        .target(
+            name: "RUMWidget",
+            dependencies: [
+                .target(name: "DatadogCore"),
+                .target(name: "DatadogLogs"),
+                .target(name: "DatadogTrace"),
+                .target(name: "DatadogRUM"),
+            ],
+            path: "RUMWidget",
             sources: ["Sources"],
             resources: [
                 .copy("Resources/PrivacyInfo.xcprivacy"),
