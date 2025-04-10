@@ -64,3 +64,9 @@ extension RUM {
         public static let errorFingerprint = "_dd.error.fingerprint"
     }
 }
+
+extension RUM: PlatformInterface {
+    public var configuration: String {
+  ""
+    }
+}
