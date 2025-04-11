@@ -10,7 +10,6 @@ import DatadogInternal
 
 /// An entry point to Datadog Session Replay feature.
 public enum SessionReplay {
-
     public private(set) static var configuration: Configuration!
 
     /// Enables Datadog Session Replay feature.
